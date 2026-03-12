@@ -1,4 +1,4 @@
-import { useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from "react";
+import { useEffect, useRef, useImperativeHandle, forwardRef, useCallback, useMemo } from "react";
 import {
   createChart,
   type IChartApi,
