@@ -234,7 +234,7 @@ const StandaloneChart = forwardRef<StandaloneChartHandle, StandaloneChartProps>(
         chart.timeScale().scrollToRealTime();
         initialFocusDoneRef.current = true;
       }
-    }, [data, chartType, markers, overlayLines, initialVisibleBars]);
+    }, [data, chartType, stableMarkers, stableOverlayLines, initialVisibleBars]);
 
     // ── Effect 3: Click handler ──
     useEffect(() => {
