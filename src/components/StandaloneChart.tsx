@@ -56,8 +56,13 @@ export interface StandaloneChartHandle {
   getChart: () => IChartApi | null;
 }
 
+const EMPTY_MARKERS: ChartMarker[] = [];
+const EMPTY_OVERLAY_LINES: ChartOverlayLine[] = [];
+
 const StandaloneChart = forwardRef<StandaloneChartHandle, StandaloneChartProps>(
-  ({ data, chartType, markers = [], overlayLines = [], initialVisibleBars = 120, onTimeClick }, ref) => {
+  ({ data, chartType, markers, overlayLines, initialVisibleBars = 120, onTimeClick }, ref) => {
+    const stableMarkers = useMemo(() => markers ?? EMPTY_MARKERS, [markers]);
+    const stableOverlayLines = useMemo(() => overlayLines ?? EMPTY_OVERLAY_LINES, [overlayLines]);
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
     const seriesRef = useRef<ISeriesApi<SeriesType> | null>(null);
