@@ -363,6 +363,14 @@ const ChartView = () => {
               <TrendingUp className="w-4 h-4" />
             </button>
           </div>
+          <button
+            onClick={handleDownloadCode}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono rounded bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
+            title="Download source code"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Code
+          </button>
         </div>
 
         {/* Chart */}
