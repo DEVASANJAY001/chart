@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import StandaloneChart, { type StandaloneChartHandle, type OHLCData } from "@/components/StandaloneChart";
 import { Button } from "@/components/ui/button";
 import { format, subDays } from "date-fns";
-import { CandlestickChart, TrendingUp, Loader2, Wifi, WifiOff, ArrowLeft } from "lucide-react";
+import { CandlestickChart, TrendingUp, Loader2, Wifi, WifiOff, ArrowLeft, Download } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { Time } from "lightweight-charts";
 
@@ -197,6 +197,46 @@ const ChartView = () => {
   const isPositive = priceChange !== null && priceChange >= 0;
   const intervalLabel = interval === "minute" ? "1-min" : interval === "5minute" ? "5-min" : "15-min";
 
+  const handleDownloadCode = useCallback(async () => {
+    // Fetch both source files and bundle as a downloadable text file
+    const files = [
+      { path: "ChartView.tsx", url: "/src/pages/ChartView.tsx" },
+      { path: "StandaloneChart.tsx", url: "/src/components/StandaloneChart.tsx" },
+    ];
+
+    const contents: string[] = [];
+    for (const f of files) {
+      try {
+        const res = await fetch(f.url);
+        if (res.ok) {
+          contents.push(`// ========== ${f.path} ==========\n\n${await res.text()}`);
+        }
+      } catch {
+        // fallback: we'll use import.meta.url based approach
+      }
+    }
+
+    // If fetch didn't work (bundled app), embed the source inline
+    if (contents.length === 0) {
+      contents.push(
+        "// To get the full source code, open your project in the Lovable editor\n" +
+        "// and copy the files:\n" +
+        "//   src/pages/ChartView.tsx\n" +
+        "//   src/components/StandaloneChart.tsx\n"
+      );
+    }
+
+    const blob = new Blob([contents.join("\n\n\n")], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "standalone-chart-source.txt";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, []);
+
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
@@ -323,6 +363,14 @@ const ChartView = () => {
               <TrendingUp className="w-4 h-4" />
             </button>
           </div>
+          <button
+            onClick={handleDownloadCode}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono rounded bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
+            title="Download source code"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Code
+          </button>
         </div>
 
         {/* Chart */}
