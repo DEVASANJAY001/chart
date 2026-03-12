@@ -163,7 +163,7 @@ const StandaloneChart = forwardRef<StandaloneChartHandle, StandaloneChartProps>(
       seriesRef.current = mainSeries;
 
       const handleResize = () => {
-        chart.applyOptions({ width: container.clientWidth });
+        chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
       };
       window.addEventListener("resize", handleResize);
 
