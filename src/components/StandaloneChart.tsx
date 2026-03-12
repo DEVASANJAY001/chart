@@ -198,8 +198,8 @@ const StandaloneChart = forwardRef<StandaloneChartHandle, StandaloneChartProps>(
       lastDataRef.current = data[data.length - 1];
 
       // Markers
-      if (markers.length > 0) {
-        const sorted = [...markers].sort((a, b) => (a.time as number) - (b.time as number));
+      if (stableMarkers.length > 0) {
+        const sorted = [...stableMarkers].sort((a, b) => (a.time as number) - (b.time as number));
         createSeriesMarkers(mainSeries, sorted.map(m => ({ ...m, size: m.size ?? 2 })));
       }
 
