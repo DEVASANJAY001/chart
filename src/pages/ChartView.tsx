@@ -197,6 +197,46 @@ const ChartView = () => {
   const isPositive = priceChange !== null && priceChange >= 0;
   const intervalLabel = interval === "minute" ? "1-min" : interval === "5minute" ? "5-min" : "15-min";
 
+  const handleDownloadCode = useCallback(async () => {
+    // Fetch both source files and bundle as a downloadable text file
+    const files = [
+      { path: "ChartView.tsx", url: "/src/pages/ChartView.tsx" },
+      { path: "StandaloneChart.tsx", url: "/src/components/StandaloneChart.tsx" },
+    ];
+
+    const contents: string[] = [];
+    for (const f of files) {
+      try {
+        const res = await fetch(f.url);
+        if (res.ok) {
+          contents.push(`// ========== ${f.path} ==========\n\n${await res.text()}`);
+        }
+      } catch {
+        // fallback: we'll use import.meta.url based approach
+      }
+    }
+
+    // If fetch didn't work (bundled app), embed the source inline
+    if (contents.length === 0) {
+      contents.push(
+        "// To get the full source code, open your project in the Lovable editor\n" +
+        "// and copy the files:\n" +
+        "//   src/pages/ChartView.tsx\n" +
+        "//   src/components/StandaloneChart.tsx\n"
+      );
+    }
+
+    const blob = new Blob([contents.join("\n\n\n")], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "standalone-chart-source.txt";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, []);
+
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
