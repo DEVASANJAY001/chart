@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import StandaloneChart, { type StandaloneChartHandle, type OHLCData } from "@/components/StandaloneChart";
 import { Button } from "@/components/ui/button";
 import { format, subDays } from "date-fns";
-import { CandlestickChart, TrendingUp, Loader2, Wifi, WifiOff, ArrowLeft } from "lucide-react";
+import { CandlestickChart, TrendingUp, Loader2, Wifi, WifiOff, ArrowLeft, Download } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { Time } from "lightweight-charts";
 
