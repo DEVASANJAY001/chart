@@ -1,4 +1,4 @@
-import { useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from "react";
+import { useEffect, useRef, useImperativeHandle, forwardRef, useCallback, useMemo } from "react";
 import {
   createChart,
   type IChartApi,
@@ -56,8 +56,13 @@ export interface StandaloneChartHandle {
   getChart: () => IChartApi | null;
 }
 
+const EMPTY_MARKERS: ChartMarker[] = [];
+const EMPTY_OVERLAY_LINES: ChartOverlayLine[] = [];
+
 const StandaloneChart = forwardRef<StandaloneChartHandle, StandaloneChartProps>(
-  ({ data, chartType, markers = [], overlayLines = [], initialVisibleBars = 120, onTimeClick }, ref) => {
+  ({ data, chartType, markers, overlayLines, initialVisibleBars = 120, onTimeClick }, ref) => {
+    const stableMarkers = useMemo(() => markers ?? EMPTY_MARKERS, [markers]);
+    const stableOverlayLines = useMemo(() => overlayLines ?? EMPTY_OVERLAY_LINES, [overlayLines]);
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
     const seriesRef = useRef<ISeriesApi<SeriesType> | null>(null);
@@ -193,8 +198,8 @@ const StandaloneChart = forwardRef<StandaloneChartHandle, StandaloneChartProps>(
       lastDataRef.current = data[data.length - 1];
 
       // Markers
-      if (markers.length > 0) {
-        const sorted = [...markers].sort((a, b) => (a.time as number) - (b.time as number));
+      if (stableMarkers.length > 0) {
+        const sorted = [...stableMarkers].sort((a, b) => (a.time as number) - (b.time as number));
         createSeriesMarkers(mainSeries, sorted.map(m => ({ ...m, size: m.size ?? 2 })));
       }
 
@@ -205,7 +210,7 @@ const StandaloneChart = forwardRef<StandaloneChartHandle, StandaloneChartProps>(
       overlaySeriesRef.current = [];
 
       // Add overlay lines
-      for (const line of overlayLines) {
+      for (const line of stableOverlayLines) {
         if (line.points.length < 2) continue;
         const lineSeries = chart.addSeries(LineSeries, {
           color: line.color,
@@ -229,7 +234,7 @@ const StandaloneChart = forwardRef<StandaloneChartHandle, StandaloneChartProps>(
         chart.timeScale().scrollToRealTime();
         initialFocusDoneRef.current = true;
       }
-    }, [data, chartType, markers, overlayLines, initialVisibleBars]);
+    }, [data, chartType, stableMarkers, stableOverlayLines, initialVisibleBars]);
 
     // ── Effect 3: Click handler ──
     useEffect(() => {
