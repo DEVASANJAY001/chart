@@ -210,7 +210,7 @@ const StandaloneChart = forwardRef<StandaloneChartHandle, StandaloneChartProps>(
       overlaySeriesRef.current = [];
 
       // Add overlay lines
-      for (const line of overlayLines) {
+      for (const line of stableOverlayLines) {
         if (line.points.length < 2) continue;
         const lineSeries = chart.addSeries(LineSeries, {
           color: line.color,
