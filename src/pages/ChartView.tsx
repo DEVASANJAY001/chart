@@ -144,7 +144,7 @@ const ChartView = () => {
       </header>
 
       {/* Chart area */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative min-h-0" style={{ height: 'calc(100vh - 57px)' }}>
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
