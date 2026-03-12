@@ -75,6 +75,7 @@ const StandaloneChart = forwardRef<StandaloneChartHandle, StandaloneChartProps>(
       const to = data.length - 1;
       const from = Math.max(0, to - bars);
       chartRef.current.timeScale().setVisibleLogicalRange({ from, to: to + 2 });
+      chartRef.current.priceScale("right").applyOptions({ autoScale: true });
       chartRef.current.timeScale().scrollToRealTime();
     }, [data.length]);
 

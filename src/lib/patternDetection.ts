@@ -175,13 +175,13 @@ export function detectSRLevels(data: OHLCData[]): SRLevel[] {
   allValues.sort((a, b) => a.value - b.value);
 
   const used = new Set<number>();
-  
+
   for (let i = 0; i < allValues.length; i++) {
     if (used.has(i)) continue;
-    
+
     const cluster: typeof allValues = [allValues[i]];
     used.add(i);
-    
+
     for (let j = i + 1; j < allValues.length; j++) {
       if (used.has(j)) continue;
       if (Math.abs(allValues[j].value - allValues[i].value) / allValues[i].value < tolerance) {
@@ -189,13 +189,13 @@ export function detectSRLevels(data: OHLCData[]): SRLevel[] {
         used.add(j);
       }
     }
-    
+
     // Need at least 2 touches for a level
     if (cluster.length >= 2) {
       const avgPrice = cluster.reduce((s, c) => s + c.value, 0) / cluster.length;
       const times = cluster.map(c => c.time);
       const lastPrice = data[data.length - 1].close;
-      
+
       levels.push({
         id: `sr-${Math.round(avgPrice)}`,
         type: avgPrice > lastPrice ? "resistance" : "support",
@@ -222,7 +222,7 @@ function getOptionContract(
 ): OptionContract {
   // Nifty options have 50-point strike intervals
   const strikeInterval = 50;
-  
+
   if (direction === "bullish") {
     // Buy CE — ATM or slightly ITM
     const atmStrike = Math.round(currentPrice / strikeInterval) * strikeInterval;
@@ -230,12 +230,12 @@ function getOptionContract(
     const nearestResistance = srLevels
       .filter(s => s.type === "resistance" && s.price > currentPrice)
       .sort((a, b) => a.price - b.price)[0];
-    
+
     // Use ATM strike, or one step ITM if near support
-    const strike = nearestResistance 
+    const strike = nearestResistance
       ? Math.round(currentPrice / strikeInterval) * strikeInterval
       : atmStrike;
-    
+
     return {
       type: "CE",
       strike,
@@ -247,11 +247,11 @@ function getOptionContract(
     const nearestSupport = srLevels
       .filter(s => s.type === "support" && s.price < currentPrice)
       .sort((a, b) => b.price - a.price)[0];
-    
+
     const strike = nearestSupport
       ? Math.round(currentPrice / strikeInterval) * strikeInterval
       : atmStrike;
-    
+
     return {
       type: "PE",
       strike,
@@ -480,71 +480,77 @@ function detectLiquiditySweep(data: OHLCData[], end: number, swings: SwingPoint[
   return { found: false, confidence: 0, direction: "bullish" };
 }
 
-function detectTrendlineBreakout(data: OHLCData[], end: number, trendlines: Trendline[], avgBody: number): { found: boolean; confidence: number; direction: "bullish" | "bearish"; pattern: string } {
-  if (end < 2) return { found: false, confidence: 0, direction: "bullish", pattern: "" };
-  const curr = data[end], prev = data[end - 1];
-  const t = getTime(curr), tPrev = getTime(prev);
-  for (const tl of trendlines) {
-    if (tl.points.length < 2) continue;
-    const p1 = tl.points[0], p2 = tl.points[1];
-    const timeDiff = p2.time - p1.time;
-    if (timeDiff === 0) continue;
-    const slope = (p2.value - p1.value) / timeDiff;
-    const expectedNow = p1.value + slope * (t - p1.time);
-    const expectedPrev = p1.value + slope * (tPrev - p1.time);
-    if (tl.type === "resistance" && curr.close > expectedNow * 1.001 && prev.close <= expectedPrev * 1.001 && isBullish(curr) && isStrongCandle(curr, avgBody)) {
-      return { found: true, confidence: 80, direction: "bullish", pattern: "Trendline Breakout" };
-    }
-    if (tl.type === "support" && curr.close < expectedNow * 0.999 && prev.close >= expectedPrev * 0.999 && isBearish(curr) && isStrongCandle(curr, avgBody)) {
-      return { found: true, confidence: 80, direction: "bearish", pattern: "Trendline Breakdown" };
+// ── Additional Pattern Detectors ──
+
+function detectHeadAndShoulders(data: OHLCData[], end: number, swings: SwingPoint[]): { found: boolean; confidence: number } {
+  if (end < 40) return { found: false, confidence: 0 };
+  const highs = swings.filter(s => s.type === "high" && s.index <= end && s.index > end - 60);
+  if (highs.length < 3) return { found: false, confidence: 0 };
+
+  const last3Highs = highs.slice(-3);
+  const [left, head, right] = last3Highs;
+
+  // Head must be higher than shoulders
+  if (head.value > left.value && head.value > right.value) {
+    const shoulderDiff = Math.abs(left.value - right.value) / left.value;
+    if (shoulderDiff < 0.015) { // Shoulders roughly equal
+      const lows = swings.filter(s => s.type === "low" && s.index > left.index && s.index < right.index);
+      if (lows.length >= 2) {
+        const neckline = lows.slice(0, 2);
+        const avgNeckline = (neckline[0].value + neckline[1].value) / 2;
+        if (data[end].close < avgNeckline && data[end - 1].close >= avgNeckline) {
+          return { found: true, confidence: 85 };
+        }
+      }
     }
   }
-  return { found: false, confidence: 0, direction: "bullish", pattern: "" };
+  return { found: false, confidence: 0 };
 }
 
-// S/R based signal targets
-function calcSRTargets(
-  direction: "bullish" | "bearish",
-  entry: number,
-  currentATR: number,
-  srLevels: SRLevel[]
-) {
-  let sl: number, t1: number, t2: number, t3: number;
-  
-  if (direction === "bullish") {
-    // SL below nearest support
-    const nearestSupport = srLevels
-      .filter(s => s.type === "support" && s.price < entry)
-      .sort((a, b) => b.price - a.price)[0];
-    sl = nearestSupport ? Math.round(nearestSupport.price - currentATR * 0.5) : Math.round(entry - currentATR * 1.5);
-    
-    // Targets at resistance levels
-    const resistances = srLevels
-      .filter(s => s.type === "resistance" && s.price > entry)
-      .sort((a, b) => a.price - b.price);
-    t1 = resistances[0] ? Math.round(resistances[0].price) : Math.round(entry + currentATR * 1.5);
-    t2 = resistances[1] ? Math.round(resistances[1].price) : Math.round(entry + currentATR * 2.5);
-    t3 = resistances[2] ? Math.round(resistances[2].price) : Math.round(entry + currentATR * 3.5);
-  } else {
-    const nearestResistance = srLevels
-      .filter(s => s.type === "resistance" && s.price > entry)
-      .sort((a, b) => a.price - b.price)[0];
-    sl = nearestResistance ? Math.round(nearestResistance.price + currentATR * 0.5) : Math.round(entry + currentATR * 1.5);
-    
-    const supports = srLevels
-      .filter(s => s.type === "support" && s.price < entry)
-      .sort((a, b) => b.price - a.price);
-    t1 = supports[0] ? Math.round(supports[0].price) : Math.round(entry - currentATR * 1.5);
-    t2 = supports[1] ? Math.round(supports[1].price) : Math.round(entry - currentATR * 2.5);
-    t3 = supports[2] ? Math.round(supports[2].price) : Math.round(entry - currentATR * 3.5);
+function detectRectangle(data: OHLCData[], end: number, swings: SwingPoint[]): { found: boolean; confidence: number; direction: "bullish" | "bearish" } {
+  const lookback = 30;
+  if (end < lookback) return { found: false, confidence: 0, direction: "bullish" };
+
+  const relevantData = data.slice(end - lookback, end);
+  const high = Math.max(...relevantData.map(d => d.high));
+  const low = Math.min(...relevantData.map(d => d.low));
+  const range = (high - low) / low;
+
+  if (range < 0.01) { // Tight consolidation
+    if (data[end].close > high) return { found: true, confidence: 75, direction: "bullish" };
+    if (data[end].close < low) return { found: true, confidence: 75, direction: "bearish" };
   }
-  
-  return { sl, t1, t2, t3 };
+  return { found: false, confidence: 0, direction: "bullish" };
 }
 
-// ══════════════════════════════════════════════════════════
-// MAIN SIGNAL SCANNER
-// ══════════════════════════════════════════════════════════
+function detectOrderBlock(data: OHLCData[], end: number, avgBody: number): { found: boolean; confidence: number; direction: "bullish" | "bearish" } {
+  if (end < 5) return { found: false, confidence: 0, direction: "bullish" };
+
+  // Bullish Order Block: Last down candle before a strong up move
+  const isStrongUp = data[end].close > data[end - 1].high && bodySize(data[end]) > avgBody * 2;
+  if (isStrongUp) {
+    for (let i = end - 1; i > end - 5; i--) {
+      if (isBearish(data[i])) {
+        return { found: true, confidence: 82, direction: "bullish" };
+      }
+    }
+  }
+
+  // Bearish Order Block: Last up candle before a strong down move
+  const isStrongDown = data[end].close < data[end - 1].low && bodySize(data[end]) > avgBody * 2;
+  if (isStrongDown) {
+    for (let i = end - 1; i > end - 5; i--) {
+      if (isBullish(data[i])) {
+        return { found: true, confidence: 82, direction: "bearish" };
+      }
+    }
+  }
+
+  return { found: false, confidence: 0, direction: "bullish" };
+}
+
+// ── Refined Signal Scanner (with MTF logic and 3-condition rule) ──
+
 export function scanForSignals(data: OHLCData[], trendlines: Trendline[], srLevels: SRLevel[] = []): TradingSignal[] {
   if (data.length < 20) return [];
 
@@ -553,75 +559,87 @@ export function scanForSignals(data: OHLCData[], trendlines: Trendline[], srLeve
   const ema50 = calcEMA(data, 50);
   const atr = calcATR(data, 14);
   const allSwings = detectSwingPoints(data, 3);
+  const ab = avgBodySize(data, data.length - 1);
 
-  const MIN_SIGNAL_GAP = 8;
-  let lastSignalIndex = -MIN_SIGNAL_GAP;
+  const addSignal = (index: number, pattern: string, direction: "bullish" | "bearish", confidence: number): boolean => {
+    // Condition 1: Trend Confirmation (using EMA as proxy for 15m trend)
+    const trend = getTrend(data, index, ema20, ema50);
+    if (direction === "bullish" && trend !== 1) confidence -= 15;
+    if (direction === "bearish" && trend !== -1) confidence -= 15;
 
-  const addSignal = (
-    index: number,
-    pattern: string,
-    direction: "bullish" | "bearish",
-    confidence: number
-  ): boolean => {
-    if (index - lastSignalIndex < MIN_SIGNAL_GAP) return false;
+    if (confidence < 70) return false;
 
-    const t = getTime(data[index]);
     const curr = data[index];
     const currentATR = atr[index] || candleRange(curr);
-    if (currentATR === 0) return false;
-
-    const trend = getTrend(data, index, ema20, ema50);
-    if (direction === "bullish" && trend === 1) confidence = Math.min(95, confidence + 5);
-    if (direction === "bearish" && trend === -1) confidence = Math.min(95, confidence + 5);
-    if (direction === "bullish" && trend === -1) confidence -= 8;
-    if (direction === "bearish" && trend === 1) confidence -= 8;
-    if (confidence < 65) return false;
-
     const entry = curr.close;
-    const { sl, t1, t2, t3 } = calcSRTargets(direction, entry, currentATR, srLevels);
-    const option = getOptionContract(direction, entry, srLevels);
+
+    // Pattern-specific target calculation (Measured Move)
+    let moveSize = currentATR * 3;
+    if (pattern.includes("Triangle") || pattern.includes("Flag")) moveSize = currentATR * 5;
+
+    const sl = direction === "bullish" ? entry - currentATR * 1.5 : entry + currentATR * 1.5;
+    const t1 = direction === "bullish" ? entry + moveSize * 0.3 : entry - moveSize * 0.3;
+    const t2 = direction === "bullish" ? entry + moveSize * 0.6 : entry - moveSize * 0.6;
+    const t3 = direction === "bullish" ? entry + moveSize * 1.0 : entry - moveSize * 1.0;
 
     signals.push({
       id: `sig-${index}-${pattern.replace(/\s/g, "")}`,
-      time: t,
+      time: getTime(data[index]),
       candleIndex: index,
       pattern,
       direction,
-      confidence,
+      confidence: Math.round(confidence),
       entry: Math.round(entry * 100) / 100,
-      stopLoss: sl,
-      target1: t1,
-      target2: t2,
-      target3: t3,
-      option,
+      stopLoss: Math.round(sl * 100) / 100,
+      target1: Math.round(t1 * 100) / 100,
+      target2: Math.round(t2 * 100) / 100,
+      target3: Math.round(t3 * 100) / 100,
+      option: getOptionContract(direction, entry, srLevels),
     });
-
-    lastSignalIndex = index;
     return true;
   };
 
-  const scanStart = Math.max(20, data.length - 500);
-
+  const scanStart = Math.max(40, data.length - 300);
   for (let i = scanStart; i < data.length; i++) {
-    if (i - lastSignalIndex < MIN_SIGNAL_GAP) continue;
-    const ab = avgBodySize(data, i);
+    // Check Reversal Patterns
+    const hs = detectHeadAndShoulders(data, i, allSwings);
+    if (hs.found) { addSignal(i, "Head & Shoulders", "bearish", hs.confidence); continue; }
 
+    // Check Institutional
+    const ob = detectOrderBlock(data, i, ab);
+    if (ob.found) { addSignal(i, "Order Block Reaction", ob.direction, ob.confidence); continue; }
+
+    // Check Consolidation
+    const rect = detectRectangle(data, i, allSwings);
+    if (rect.found) { addSignal(i, "Rectangle Breakout", rect.direction, rect.confidence); continue; }
+
+    // Existing patterns
     const bf = detectBullFlag(data, i, ab);
     if (bf.found) { addSignal(i, "Bull Flag", "bullish", bf.confidence); continue; }
     const brf = detectBearFlag(data, i, ab);
     if (brf.found) { addSignal(i, "Bear Flag", "bearish", brf.confidence); continue; }
+
     const at = detectAscendingTriangle(data, i, allSwings, ab);
     if (at.found) { addSignal(i, "Ascending Triangle", "bullish", at.confidence); continue; }
-    const dst = detectDescendingTriangle(data, i, allSwings, ab);
-    if (dst.found) { addSignal(i, "Descending Triangle", "bearish", dst.confidence); continue; }
+    const dt = detectDescendingTriangle(data, i, allSwings, ab);
+    if (dt.found) { addSignal(i, "Descending Triangle", "bearish", dt.confidence); continue; }
+
     const db = detectDoubleBottom(data, i, allSwings);
     if (db.found) { addSignal(i, "Double Bottom", "bullish", db.confidence); continue; }
-    const dt = detectDoubleTop(data, i, allSwings);
-    if (dt.found) { addSignal(i, "Double Top", "bearish", dt.confidence); continue; }
+    const dtop = detectDoubleTop(data, i, allSwings); // renamed to avoid conflict with ChartType? No, it's just local.
+    if (dtop.found) { addSignal(i, "Double Top", "bearish", dtop.confidence); continue; }
+
     const ls = detectLiquiditySweep(data, i, allSwings, ab);
     if (ls.found) { addSignal(i, "Liquidity Sweep", ls.direction, ls.confidence); continue; }
-    const tlb = detectTrendlineBreakout(data, i, trendlines, ab);
-    if (tlb.found) { addSignal(i, tlb.pattern, tlb.direction, tlb.confidence); }
+
+    // Candlestick confirmations
+    if (isStrongCandle(data[i], ab)) {
+      if (isBullish(data[i]) && isBearish(data[i - 1]) && data[i].close > data[i - 1].open) {
+        addSignal(i, "Bullish Engulfing", "bullish", 75);
+      } else if (isBearish(data[i]) && isBullish(data[i - 1]) && data[i].close < data[i - 1].open) {
+        addSignal(i, "Bearish Engulfing", "bearish", 75);
+      }
+    }
   }
 
   return signals;

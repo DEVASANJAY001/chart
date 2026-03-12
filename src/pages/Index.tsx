@@ -292,11 +292,10 @@ const Index = () => {
                 <button
                   key={inst}
                   onClick={() => setInstrument(inst)}
-                  className={`px-3 py-1 text-xs font-mono font-bold rounded transition-colors ${
-                    instrument === inst
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
+                  className={`px-3 py-1 text-xs font-mono font-bold rounded transition-colors ${instrument === inst
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                    }`}
                 >
                   {inst === "NIFTY" ? "NIFTY 50" : "SENSEX"}
                 </button>
@@ -314,11 +313,10 @@ const Index = () => {
             </button>
             <button
               onClick={() => setIsLive(!isLive)}
-              className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-mono transition-colors ${
-                isLive
-                  ? "bg-chart-green/15 text-chart-green"
-                  : "bg-secondary text-muted-foreground"
-              }`}
+              className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-mono transition-colors ${isLive
+                ? "bg-chart-green/15 text-chart-green"
+                : "bg-secondary text-muted-foreground"
+                }`}
               title={isLive ? "Live updates ON" : "Live updates OFF"}
             >
               {isLive ? (
@@ -344,9 +342,8 @@ const Index = () => {
                 ₹{lastPrice.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
               </span>
               <span
-                className={`text-sm font-mono font-semibold ${
-                  isPositive ? "text-chart-green" : "text-chart-red"
-                }`}
+                className={`text-sm font-mono font-semibold ${isPositive ? "text-chart-green" : "text-chart-red"
+                  }`}
               >
                 {isPositive ? "+" : ""}
                 {priceChange?.toFixed(2)}%
@@ -368,51 +365,58 @@ const Index = () => {
                 <button
                   key={opt.value}
                   onClick={() => setInterval_(opt.value)}
-                  className={`px-3 py-1.5 text-xs font-mono rounded transition-colors ${
-                    interval === opt.value
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-secondary text-secondary-foreground hover:bg-accent"
-                  }`}
+                  className={`px-3 py-1.5 text-xs font-mono rounded transition-colors ${interval === opt.value
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-secondary-foreground hover:bg-accent"
+                    }`}
                 >
                   {opt.label}
                 </button>
               ))}
             </div>
-            <button
-              onClick={() => setShowSignals(!showSignals)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono rounded transition-colors ${
-                showSignals
-                  ? "bg-yellow-500/15 text-yellow-400 border border-yellow-500/30"
-                  : "bg-secondary text-muted-foreground"
-              }`}
-              title="Toggle AI Signals"
-            >
-              <Zap className="w-3.5 h-3.5" />
-              AI Signals
-              {showSignals && signals.length > 0 && (
-                <span className="ml-1 bg-yellow-500/20 px-1.5 rounded text-yellow-300">{signals.length}</span>
-              )}
-            </button>
+
+            <div className="flex gap-1 bg-secondary rounded p-0.5">
+              <button
+                onClick={() => setShowSignals(!showSignals)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono rounded transition-colors ${showSignals ? "bg-yellow-500/20 text-yellow-500 border border-yellow-500/30" : "text-muted-foreground"
+                  }`}
+                title="Toggle Signals"
+              >
+                <Zap className="w-3 h-3" /> SIGNALS
+              </button>
+              <button
+                className={`flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono rounded transition-colors bg-secondary text-primary border border-primary/20`}
+                title="Trendlines are automatic"
+              >
+                TRENDLINES
+              </button>
+              <button
+                onClick={() => chartRef.current?.focusLatestCandles()}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono rounded bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
+                title="Zoom to latest price"
+              >
+                <TrendingUp className="w-3 h-3" /> FOCUS
+              </button>
+            </div>
           </div>
+
           <div className="flex gap-1 bg-secondary rounded p-0.5">
             <button
               onClick={() => setChartType("candlestick")}
-              className={`p-2 rounded transition-colors ${
-                chartType === "candlestick"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+              className={`p-2 rounded transition-colors ${chartType === "candlestick"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground"
+                }`}
               title="Candlestick"
             >
               <CandlestickChart className="w-4 h-4" />
             </button>
             <button
               onClick={() => setChartType("line")}
-              className={`p-2 rounded transition-colors ${
-                chartType === "line"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+              className={`p-2 rounded transition-colors ${chartType === "line"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground"
+                }`}
               title="Line"
             >
               <TrendingUp className="w-4 h-4" />
@@ -426,11 +430,10 @@ const Index = () => {
             {advancedTrendlines.map((tl) => (
               <span
                 key={tl.id}
-                className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-                  tl.type === "support"
-                    ? "border-chart-green/30 bg-chart-green/10 text-chart-green"
-                    : "border-chart-red/30 bg-chart-red/10 text-chart-red"
-                } ${tl.broken ? "line-through opacity-60" : ""}`}
+                className={`text-[10px] font-mono px-2 py-0.5 rounded border ${tl.type === "support"
+                  ? "border-chart-green/30 bg-chart-green/10 text-chart-green"
+                  : "border-chart-red/30 bg-chart-red/10 text-chart-red"
+                  } ${tl.broken ? "line-through opacity-60" : ""}`}
               >
                 {tl.category.replace(/_/g, " ")} ({tl.touches} touches)
                 {tl.broken && " ⚡"}

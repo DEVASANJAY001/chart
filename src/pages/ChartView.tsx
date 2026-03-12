@@ -1,10 +1,13 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import StandaloneChart, { type StandaloneChartHandle, type OHLCData } from "@/components/StandaloneChart";
 import { Button } from "@/components/ui/button";
 import { format, subDays } from "date-fns";
-import { CandlestickChart, TrendingUp, Loader2, Wifi, WifiOff, ArrowLeft, Download } from "lucide-react";
+import { CandlestickChart, TrendingUp, Loader2, Wifi, WifiOff, ArrowLeft, Download, Zap } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { Time } from "lightweight-charts";
+import { scanForSignals, detectSRLevels, type TradingSignal, type SRLevel } from "@/lib/patternDetection";
+import { detectAdvancedTrendlines, type AdvancedTrendline } from "@/lib/trendlineEngine";
+import SignalPanel from "@/components/SignalPanel";
 
 type ChartType = "candlestick" | "line";
 type TimeInterval = "minute" | "5minute" | "15minute";
@@ -50,11 +53,88 @@ const ChartView = () => {
   const [priceChange, setPriceChange] = useState<number | null>(null);
   const [isLive, setIsLive] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [showSignals, setShowSignals] = useState(true);
+  const [selectedSignal, setSelectedSignal] = useState<TradingSignal | null>(null);
 
   const chartRef = useRef<StandaloneChartHandle>(null);
   const firstOpenRef = useRef<number | null>(null);
   const pendingAutoZoomRef = useRef(false);
   const lastCandleBucketRef = useRef<number | null>(null);
+
+  // AI Detection Logic
+  const advancedTrendlines = useMemo(() => {
+    if (data.length < 20) return [];
+    return detectAdvancedTrendlines(data);
+  }, [data]);
+
+  const srLevels = useMemo(() => {
+    if (data.length < 30) return [];
+    return detectSRLevels(data);
+  }, [data]);
+
+  const legacyTrendlines = useMemo(() => {
+    return advancedTrendlines.map(tl => ({
+      id: tl.id,
+      type: tl.type,
+      points: tl.points.map(p => ({ time: p.time, value: p.value })),
+      slope: tl.slope,
+      intercept: tl.intercept,
+    }));
+  }, [advancedTrendlines]);
+
+  const signals = useMemo(() => {
+    if (!showSignals || data.length < 30) return [];
+    return scanForSignals(data, legacyTrendlines, srLevels);
+  }, [data, legacyTrendlines, srLevels, showSignals]);
+
+  // Map to StandaloneChart formats
+  const chartMarkers = useMemo(() => {
+    if (!showSignals) return [];
+    return signals.map(sig => ({
+      time: sig.time as unknown as Time,
+      position: sig.direction === "bullish" ? "belowBar" as const : "aboveBar" as const,
+      color: "#FFD700",
+      shape: sig.direction === "bullish" ? "arrowUp" as const : "arrowDown" as const,
+      text: `⚡ ${sig.pattern}`,
+      size: 2,
+    }));
+  }, [signals, showSignals]);
+
+  const chartOverlayLines = useMemo(() => {
+    const lines = [];
+
+    // Trendlines
+    for (const tl of advancedTrendlines) {
+      if (tl.points.length < 2) continue;
+      lines.push({
+        id: tl.id,
+        points: [...tl.points, { time: tl.extended.time, value: tl.extended.value }] as any,
+        color: tl.type === "support"
+          ? (tl.broken ? "hsla(142, 60%, 45%, 0.2)" : "hsl(142, 60%, 45%)")
+          : (tl.broken ? "hsla(0, 72%, 55%, 0.2)" : "hsl(0, 72%, 55%)"),
+        lineWidth: tl.touches >= 3 ? 2 as const : 1 as const,
+        lineStyle: tl.category.includes("horizontal") ? 2 : 0,
+      });
+    }
+
+    // SR Levels
+    for (const sr of srLevels) {
+      if (data.length === 0) continue;
+      lines.push({
+        id: sr.id,
+        points: [
+          { time: data[0].time, value: sr.price },
+          { time: data[data.length - 1].time, value: sr.price }
+        ] as any,
+        color: sr.type === "support" ? "hsla(210, 80%, 55%, 0.5)" : "hsla(330, 80%, 55%, 0.5)",
+        lineWidth: 1 as const,
+        lineStyle: 1,
+        lastValueVisible: true,
+      });
+    }
+
+    return lines;
+  }, [advancedTrendlines, srLevels, data]);
 
   const getCandleBucket = useCallback((date: Date): number => {
     const intervalSeconds = interval === "minute" ? 60 : interval === "5minute" ? 300 : 900;
@@ -197,8 +277,13 @@ const ChartView = () => {
   const isPositive = priceChange !== null && priceChange >= 0;
   const intervalLabel = interval === "minute" ? "1-min" : interval === "5minute" ? "5-min" : "15-min";
 
+  const handleTimeClick = useCallback((time: Time) => {
+    const clickTime = time as number;
+    const matched = signals.find(s => s.time === clickTime);
+    if (matched) setSelectedSignal(matched);
+  }, [signals]);
+
   const handleDownloadCode = useCallback(async () => {
-    // Fetch both source files and bundle as a downloadable text file
     const files = [
       { path: "ChartView.tsx", url: "/src/pages/ChartView.tsx" },
       { path: "StandaloneChart.tsx", url: "/src/components/StandaloneChart.tsx" },
@@ -211,15 +296,12 @@ const ChartView = () => {
         if (res.ok) {
           contents.push(`// ========== ${f.path} ==========\n\n${await res.text()}`);
         }
-      } catch {
-        // fallback: we'll use import.meta.url based approach
-      }
+      } catch { }
     }
 
-    // If fetch didn't work (bundled app), embed the source inline
     if (contents.length === 0) {
       contents.push(
-        "// To get the full source code, open your project in the Lovable editor\n" +
+        "// To get the full source code, open your project in your editor\n" +
         "// and copy the files:\n" +
         "//   src/pages/ChartView.tsx\n" +
         "//   src/components/StandaloneChart.tsx\n"
@@ -257,11 +339,10 @@ const ChartView = () => {
                 <button
                   key={inst}
                   onClick={() => setInstrument(inst)}
-                  className={`px-3 py-1 text-xs font-mono font-bold rounded transition-colors ${
-                    instrument === inst
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
+                  className={`px-3 py-1 text-xs font-mono font-bold rounded transition-colors ${instrument === inst
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                    }`}
                 >
                   {inst === "NIFTY" ? "NIFTY 50" : "SENSEX"}
                 </button>
@@ -273,11 +354,10 @@ const ChartView = () => {
 
             <button
               onClick={() => setIsLive(!isLive)}
-              className={`ml-auto flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-mono transition-colors ${
-                isLive
-                  ? "bg-chart-green/15 text-chart-green"
-                  : "bg-secondary text-muted-foreground"
-              }`}
+              className={`ml-auto flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-mono transition-colors ${isLive
+                ? "bg-chart-green/15 text-chart-green"
+                : "bg-secondary text-muted-foreground"
+                }`}
               title={isLive ? "Live updates ON" : "Live updates OFF"}
             >
               {isLive ? (
@@ -304,9 +384,8 @@ const ChartView = () => {
                 ₹{lastPrice.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
               </span>
               <span
-                className={`text-sm font-mono font-semibold ${
-                  isPositive ? "text-chart-green" : "text-chart-red"
-                }`}
+                className={`text-sm font-mono font-semibold ${isPositive ? "text-chart-green" : "text-chart-red"
+                  }`}
               >
                 {isPositive ? "+" : ""}
                 {priceChange?.toFixed(2)}%
@@ -328,49 +407,74 @@ const ChartView = () => {
                 <button
                   key={opt.value}
                   onClick={() => setInterval_(opt.value)}
-                  className={`px-3 py-1.5 text-xs font-mono rounded transition-colors ${
-                    interval === opt.value
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-secondary text-secondary-foreground hover:bg-accent"
-                  }`}
+                  className={`px-3 py-1.5 text-xs font-mono rounded transition-colors ${interval === opt.value
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-secondary-foreground hover:bg-accent"
+                    }`}
                 >
                   {opt.label}
                 </button>
               ))}
             </div>
+
+            <div className="flex gap-1 bg-secondary rounded p-0.5">
+              <button
+                onClick={() => setShowSignals(!showSignals)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono rounded transition-colors ${showSignals ? "bg-yellow-500/20 text-yellow-500 border border-yellow-500/30" : "text-muted-foreground"
+                  }`}
+                title="Toggle Signals"
+              >
+                <Zap className="w-3 h-3" /> SIGNALS
+              </button>
+              <button
+                className={`flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono rounded transition-colors bg-secondary text-primary border border-primary/20`}
+                title="Trendlines are automatic"
+              >
+                TRENDLINES
+              </button>
+              <button
+                onClick={() => chartRef.current?.focusLatestCandles()}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono rounded bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
+                title="Zoom to latest price"
+              >
+                <TrendingUp className="w-3 h-3" /> FOCUS
+              </button>
+            </div>
           </div>
-          <div className="flex gap-1 bg-secondary rounded p-0.5">
-            <button
-              onClick={() => setChartType("candlestick")}
-              className={`p-2 rounded transition-colors ${
-                chartType === "candlestick"
+
+          <div className="flex items-center gap-3">
+            <div className="flex gap-1 bg-secondary rounded p-0.5">
+              <button
+                onClick={() => setChartType("candlestick")}
+                className={`p-2 rounded transition-colors ${chartType === "candlestick"
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:text-foreground"
-              }`}
-              title="Candlestick"
-            >
-              <CandlestickChart className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setChartType("line")}
-              className={`p-2 rounded transition-colors ${
-                chartType === "line"
+                  }`}
+                title="Candlestick"
+              >
+                <CandlestickChart className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setChartType("line")}
+                className={`p-2 rounded transition-colors ${chartType === "line"
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:text-foreground"
-              }`}
-              title="Line"
+                  }`}
+                title="Line"
+              >
+                <TrendingUp className="w-4 h-4" />
+              </button>
+            </div>
+
+            <button
+              onClick={handleDownloadCode}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono rounded bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
+              title="Download source code"
             >
-              <TrendingUp className="w-4 h-4" />
+              <Download className="w-3.5 h-3.5" />
+              Code
             </button>
           </div>
-          <button
-            onClick={handleDownloadCode}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono rounded bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
-            title="Download source code"
-          >
-            <Download className="w-3.5 h-3.5" />
-            Code
-          </button>
         </div>
 
         {/* Chart */}
@@ -396,13 +500,22 @@ const ChartView = () => {
                 ref={chartRef}
                 data={data}
                 chartType={chartType}
+                markers={chartMarkers}
+                overlayLines={chartOverlayLines}
+                onTimeClick={handleTimeClick}
               />
             )}
           </div>
+          {selectedSignal && (
+            <SignalPanel
+              signal={selectedSignal}
+              onClose={() => setSelectedSignal(null)}
+            />
+          )}
         </div>
 
         <p className="text-xs text-muted-foreground font-mono mt-3 text-center">
-          Data via Kite Connect • {isLive ? "Live updates every 1s" : "Paused"} • {intervalLabel} candles • IST
+          Data via Kite Connect • {isLive ? "Live updates every 1s" : "Paused"} • {intervalLabel} • IST
         </p>
       </div>
     </div>

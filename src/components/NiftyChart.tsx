@@ -53,6 +53,7 @@ const NiftyChart = forwardRef<NiftyChartHandle, NiftyChartProps>(
       const to = data.length - 1;
       const from = Math.max(0, to - bars);
       chartRef.current.timeScale().setVisibleLogicalRange({ from, to: to + 2 });
+      chartRef.current.priceScale("right").applyOptions({ autoScale: true });
       chartRef.current.timeScale().scrollToRealTime();
     }, [data.length]);
 
@@ -193,34 +194,11 @@ const NiftyChart = forwardRef<NiftyChartHandle, NiftyChartProps>(
         allMarkers.push({
           time: sig.time as unknown as Time,
           position: sig.direction === "bullish" ? "belowBar" : "aboveBar",
-          color: "#FFD700",
+          color: "#FFD700", // Glowing Gold
           shape: sig.direction === "bullish" ? "arrowUp" : "arrowDown",
-          text: sig.pattern,
+          text: `⚡ ${sig.pattern}`,
           size: 2,
         });
-      }
-
-      for (const tl of advancedTrendlines) {
-        if (tl.broken && tl.breakoutIndex !== undefined && tl.breakoutIndex < data.length) {
-          allMarkers.push({
-            time: data[tl.breakoutIndex].time,
-            position: tl.type === "resistance" ? "belowBar" : "aboveBar",
-            color: tl.type === "resistance" ? "#00FF88" : "#FF4444",
-            shape: "circle",
-            text: tl.type === "resistance" ? "⚡ Breakout" : "⚡ Breakdown",
-            size: 1,
-          });
-        }
-        if (tl.retested && tl.retestIndex !== undefined && tl.retestIndex < data.length) {
-          allMarkers.push({
-            time: data[tl.retestIndex].time,
-            position: tl.type === "resistance" ? "belowBar" : "aboveBar",
-            color: "#AA88FF",
-            shape: "circle",
-            text: "✓ Retest",
-            size: 1,
-          });
-        }
       }
 
       if (allMarkers.length > 0) {
@@ -236,7 +214,7 @@ const NiftyChart = forwardRef<NiftyChartHandle, NiftyChartProps>(
 
       // ── Support/Resistance horizontal lines ──
       for (const sr of srLevels) {
-        const color = sr.type === "support" ? "hsl(210, 80%, 55%)" : "hsl(330, 80%, 55%)";
+        const color = sr.type === "support" ? "hsla(210, 80%, 55%, 0.5)" : "hsla(330, 80%, 55%, 0.5)";
         const srSeries = chart.addSeries(LineSeries, {
           color,
           lineWidth: 1,
@@ -259,17 +237,17 @@ const NiftyChart = forwardRef<NiftyChartHandle, NiftyChartProps>(
         if (tl.points.length < 2) continue;
 
         let color: string;
-        let lineWidth: 1 | 2 | 3 | 4 = 2;
+        let lineWidth: 1 | 2 | 3 | 4 = tl.touches >= 3 ? 2 : 1;
         let lineStyle: number = 0;
 
         if (tl.type === "support") {
-          color = tl.broken ? "hsla(142, 60%, 45%, 0.3)" : "hsl(142, 60%, 45%)";
+          color = tl.broken ? "hsla(142, 60%, 45%, 0.2)" : "hsl(142, 60%, 45%)";
         } else {
-          color = tl.broken ? "hsla(0, 72%, 55%, 0.3)" : "hsl(0, 72%, 55%)";
+          color = tl.broken ? "hsla(0, 72%, 55%, 0.2)" : "hsl(0, 72%, 55%)";
         }
 
-        if (tl.category === "horizontal_support" || tl.category === "horizontal_resistance") {
-          lineStyle = 1;
+        if (tl.category.includes("horizontal")) {
+          lineStyle = 2;
           lineWidth = 1;
         }
 
@@ -282,15 +260,17 @@ const NiftyChart = forwardRef<NiftyChartHandle, NiftyChartProps>(
           lastValueVisible: false,
         });
 
-        const p1 = tl.points[0];
-        const pLast = tl.points[tl.points.length - 1];
-        const lineData: LineData[] = [
-          { time: p1.time as unknown as Time, value: p1.value },
-          { time: pLast.time as unknown as Time, value: pLast.value },
-        ];
+        const lineData: LineData[] = tl.points.map(p => ({
+          time: p.time as unknown as Time,
+          value: p.value
+        }));
 
-        if (tl.extended.time > pLast.time) {
-          lineData.push({ time: tl.extended.time as unknown as Time, value: tl.extended.value });
+        // Extension
+        if (tl.extended.time > tl.points[tl.points.length - 1].time) {
+          lineData.push({
+            time: tl.extended.time as unknown as Time,
+            value: tl.extended.value
+          });
         }
 
         tlSeries.setData(lineData);

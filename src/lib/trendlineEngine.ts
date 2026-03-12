@@ -110,84 +110,73 @@ export function detectAdvancedTrendlines(data: OHLCData[]): AdvancedTrendline[] 
   const highs = swings.filter(s => s.type === "high");
   const lows = swings.filter(s => s.type === "low");
   const trendlines: AdvancedTrendline[] = [];
-  const tolerance = 0.005; // 0.5%
+  const tolerance = 0.003; // 0.3% - tighter tolerance for premium feel
   const lastIdx = data.length - 1;
   const lastTime = getTime(data[lastIdx]);
 
-  // ── Support trendlines (connecting swing lows) ──
-  for (let i = 0; i < lows.length - 1 && trendlines.length < 8; i++) {
-    for (let j = i + 1; j < lows.length; j++) {
-      const p1 = lows[i], p2 = lows[j];
-      if (p2.index - p1.index < 3) continue;
+  // Support & Resistance Trendlines
+  const detectLines = (points: SwingPoint[], type: "support" | "resistance") => {
+    for (let i = 0; i < points.length - 1; i++) {
+      for (let j = i + 1; j < points.length; j++) {
+        const p1 = points[i], p2 = points[j];
+        if (p2.index - p1.index < 5) continue; // Minimum distance
 
-      const slope = (p2.value - p1.value) / (p2.index - p1.index);
-      const touches = countTouches(lows, p1, p2, tolerance);
+        const slope = (p2.value - p1.value) / (p2.index - p1.index);
+        
+        // Directional rules
+        if (type === "support" && slope < -0.8) continue;
+        if (type === "resistance" && slope > 0.8) continue;
 
-      if (touches.length >= 2) {
-        const timeSlope = p2.time !== p1.time ? (p2.value - p1.value) / (p2.time - p1.time) : 0;
-        const extTime = lastTime + (lastTime - p2.time) * 0.3;
-        const extValue = p2.value + timeSlope * (extTime - p2.time);
+        const touches = countTouches(points, p1, p2, tolerance);
+        if (touches.length >= 2) {
+          const timeSlope = p2.time !== p1.time ? (p2.value - p1.value) / (p2.time - p1.time) : 0;
+          const extTime = lastTime + (lastTime - p2.time) * 0.5; // Project forward
+          const extValue = p2.value + timeSlope * (extTime - p2.time);
 
-        let category: AdvancedTrendline["category"];
-        if (Math.abs(slope) < 0.01) category = "horizontal_support";
-        else if (slope > 0) category = "uptrend";
-        else category = "channel_lower";
+          let category: AdvancedTrendline["category"];
+          const absSlope = Math.abs(slope);
+          
+          if (absSlope < 0.01) {
+            category = type === "support" ? "horizontal_support" : "horizontal_resistance";
+          } else {
+            category = type === "support" ? "uptrend" : "downtrend";
+          }
 
-        const strength = Math.min(100, touches.length * 20 + (p2.index - p1.index > 30 ? 20 : 0));
+          const strength = Math.min(100, touches.length * 20 + (touches.length >= 3 ? 30 : 0));
 
-        trendlines.push({
-          id: `sup-${i}-${j}`,
-          type: "support",
-          category,
-          points: touches.map(t => ({ time: t.time, value: t.value, index: t.index })),
-          slope: timeSlope,
-          intercept: p1.value - timeSlope * p1.time,
-          touches: touches.length,
-          strength,
-          extended: { time: extTime, value: extValue },
-          broken: false,
-          retested: false,
-        });
-        break;
+          trendlines.push({
+            id: `${type}-${i}-${j}`,
+            type,
+            category,
+            points: touches.map(t => ({ time: t.time, value: t.value, index: t.index })),
+            slope: timeSlope,
+            intercept: p1.value - timeSlope * p1.time,
+            touches: touches.length,
+            strength,
+            extended: { time: extTime, value: extValue },
+            broken: false,
+            retested: false,
+          });
+          break; // Avoid too many overlapping lines from same origin
+        }
       }
     }
-  }
+  };
 
-  // ── Resistance trendlines (connecting swing highs) ──
-  for (let i = 0; i < highs.length - 1 && trendlines.length < 12; i++) {
-    for (let j = i + 1; j < highs.length; j++) {
-      const p1 = highs[i], p2 = highs[j];
-      if (p2.index - p1.index < 3) continue;
+  detectLines(lows, "support");
+  detectLines(highs, "resistance");
 
-      const slope = (p2.value - p1.value) / (p2.index - p1.index);
-      const touches = countTouches(highs, p1, p2, tolerance);
-
-      if (touches.length >= 2) {
-        const timeSlope = p2.time !== p1.time ? (p2.value - p1.value) / (p2.time - p1.time) : 0;
-        const extTime = lastTime + (lastTime - p2.time) * 0.3;
-        const extValue = p2.value + timeSlope * (extTime - p2.time);
-
-        let category: AdvancedTrendline["category"];
-        if (Math.abs(slope) < 0.01) category = "horizontal_resistance";
-        else if (slope < 0) category = "downtrend";
-        else category = "channel_upper";
-
-        const strength = Math.min(100, touches.length * 20 + (p2.index - p1.index > 30 ? 20 : 0));
-
-        trendlines.push({
-          id: `res-${i}-${j}`,
-          type: "resistance",
-          category,
-          points: touches.map(t => ({ time: t.time, value: t.value, index: t.index })),
-          slope: timeSlope,
-          intercept: p1.value - timeSlope * p1.time,
-          touches: touches.length,
-          strength,
-          extended: { time: extTime, value: extValue },
-          broken: false,
-          retested: false,
-        });
-        break;
+  // ── Channel Detection ──
+  // If we have a support and resistance roughly parallel
+  for (let i = 0; i < trendlines.length; i++) {
+    for (let j = i + 1; j < trendlines.length; j++) {
+      const t1 = trendlines[i], t2 = trendlines[j];
+      if (t1.type === t2.type) continue;
+      
+      const slopeDiff = Math.abs(t1.slope - t2.slope) / Math.abs((t1.slope + t2.slope) / 2 || 1);
+      if (slopeDiff < 0.2) { // Roughly parallel
+        if (t1.type === "support") t1.category = t1.slope > 0 ? "uptrend" : "channel_lower";
+        if (t2.type === "resistance") t2.category = t2.slope < 0 ? "downtrend" : "channel_upper";
       }
     }
   }
@@ -197,30 +186,27 @@ export function detectAdvancedTrendlines(data: OHLCData[]): AdvancedTrendline[] 
     if (tl.points.length < 2) continue;
     const lastPoint = tl.points[tl.points.length - 1];
 
-    // Check recent candles for breakout
     for (let k = lastPoint.index + 1; k <= lastIdx; k++) {
       const expectedValue = lastPoint.value + tl.slope * (getTime(data[k]) - lastPoint.time);
 
-      if (tl.type === "resistance" && data[k].close > expectedValue * 1.001 && data[k - 1]?.close <= expectedValue * 1.001) {
+      if (tl.type === "resistance" && data[k].close > expectedValue * 1.001) {
         tl.broken = true;
         tl.breakoutIndex = k;
         break;
       }
-      if (tl.type === "support" && data[k].close < expectedValue * 0.999 && data[k - 1]?.close >= expectedValue * 0.999) {
+      if (tl.type === "support" && data[k].close < expectedValue * 0.999) {
         tl.broken = true;
         tl.breakoutIndex = k;
         break;
       }
     }
 
-    // Check for retest after breakout
     if (tl.broken && tl.breakoutIndex !== undefined) {
       for (let k = tl.breakoutIndex + 1; k <= lastIdx; k++) {
         const expectedValue = lastPoint.value + tl.slope * (getTime(data[k]) - lastPoint.time);
-        const retestTolerance = Math.abs(expectedValue * 0.002);
+        const retestTolerance = Math.abs(expectedValue * 0.0015);
 
-        if (Math.abs(data[k].close - expectedValue) < retestTolerance) {
-          // Price returned to trendline
+        if (Math.abs(data[k].low - expectedValue) < retestTolerance || Math.abs(data[k].high - expectedValue) < retestTolerance) {
           if (k + 1 <= lastIdx) {
             const nextCandle = data[k + 1];
             if (tl.type === "resistance" && nextCandle.close > expectedValue) {
@@ -239,9 +225,7 @@ export function detectAdvancedTrendlines(data: OHLCData[]): AdvancedTrendline[] 
     }
   }
 
-  // Sort by strength
-  trendlines.sort((a, b) => b.strength - a.strength);
-  return trendlines.slice(0, 8);
+  return trendlines.sort((a, b) => b.strength - a.strength).slice(0, 10);
 }
 
 // ── Generate breakout signals from trendlines ──
@@ -254,12 +238,12 @@ export function detectTrendlineSignals(data: OHLCData[], trendlines: AdvancedTre
     const idx = tl.breakoutIndex;
     const time = getTime(data[idx]);
     const direction: "bullish" | "bearish" = tl.type === "resistance" ? "bullish" : "bearish";
-    let confidence = 75 + tl.touches * 3;
-    let pattern = tl.type === "resistance" ? "Trendline Breakout" : "Trendline Breakdown";
+    let confidence = 70 + tl.touches * 5;
+    let pattern = tl.type === "resistance" ? "Resistance Breakout" : "Support Breakdown";
 
     if (tl.retested) {
-      confidence = Math.min(95, confidence + 10);
-      pattern += " + Retest";
+      confidence = Math.min(98, confidence + 15);
+      pattern += " (Retested)";
     }
 
     signals.push({

@@ -75,6 +75,22 @@ const SignalPanel = ({ signal, onClose }: SignalPanelProps) => {
             </span>
             <span className="text-sm font-mono font-semibold text-chart-red">₹{signal.stopLoss.toLocaleString("en-IN")}</span>
           </div>
+          <div className="flex items-center justify-between border-t border-border pt-1.5 mt-1.5">
+            <span className="text-xs font-mono text-muted-foreground">Risk/Reward</span>
+            <span className="text-xs font-mono font-bold text-yellow-400">
+              {(() => {
+                const risk = Math.abs(signal.entry - signal.stopLoss);
+                const reward = Math.abs(signal.target3 - signal.entry);
+                return `1:${(reward / risk).toFixed(1)}`;
+              })()}
+            </span>
+          </div>
+        </div>
+
+        {/* Details */}
+        <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground pt-1">
+          <span>{new Date(signal.time * 1000).toLocaleTimeString()}</span>
+          <span>Conf: {signal.confidence}%</span>
         </div>
 
         {/* Targets */}
