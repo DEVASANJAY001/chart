@@ -1,0 +1,1 @@
+CREATE POLICY "Allow public insert" ON public.kite_settings FOR INSERT TO public WITH CHECK (true);
