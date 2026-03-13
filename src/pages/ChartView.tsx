@@ -60,6 +60,7 @@ const ChartView = () => {
   const firstOpenRef = useRef<number | null>(null);
   const pendingAutoZoomRef = useRef(false);
   const lastCandleBucketRef = useRef<number | null>(null);
+  const currentCandleRef = useRef<OHLCData | null>(null);
 
   // AI Detection Logic
   const advancedTrendlines = useMemo(() => {
@@ -200,11 +201,13 @@ const ChartView = () => {
     fetchData();
   }, [interval, instrument]);
 
-  // Keep lastCandleBucket in sync
+  // Keep lastCandleBucket and currentCandle in sync
   useEffect(() => {
     if (data.length > 0) {
-      const lastTime = data[data.length - 1].time as unknown as number;
+      const lastCandle = data[data.length - 1];
+      const lastTime = lastCandle.time as unknown as number;
       lastCandleBucketRef.current = getCandleBucket(new Date(lastTime * 1000));
+      currentCandleRef.current = { ...lastCandle };
     }
   }, [data, getCandleBucket]);
 
@@ -249,16 +252,30 @@ const ChartView = () => {
         const lastBucket = lastCandleBucketRef.current;
 
         if (lastBucket !== null && currentBucket > lastBucket) {
-          const newCandle: OHLCData = {
-            time: currentBucket as unknown as Time,
-            open: ltp,
-            high: ltp,
-            low: ltp,
-            close: ltp,
-          };
+          // New candle period — finalize the previous candle and append a new one
+          setData(prev => {
+            const finalized = currentCandleRef.current || prev[prev.length - 1];
+            const newCandle: OHLCData = {
+              time: currentBucket as unknown as Time,
+              open: ltp,
+              high: ltp,
+              low: ltp,
+              close: ltp,
+            };
+            return [...prev.slice(0, -1), { ...finalized }, newCandle];
+          });
           lastCandleBucketRef.current = currentBucket;
-          setData(prev => [...prev, newCandle]);
         } else {
+          // Same candle period — update the real-time tracking ref and the chart visually
+          if (currentCandleRef.current) {
+            const last = currentCandleRef.current;
+            currentCandleRef.current = {
+              ...last,
+              close: ltp,
+              high: Math.max(last.high, ltp),
+              low: Math.min(last.low, ltp),
+            };
+          }
           chartRef.current?.updateLastCandle(ltp);
         }
       }
