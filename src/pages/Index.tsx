@@ -3,7 +3,7 @@ import NiftyChart, { type NiftyChartHandle, type OHLCData } from "@/components/N
 import SignalPanel from "@/components/SignalPanel";
 import { Button } from "@/components/ui/button";
 import { format, subDays } from "date-fns";
-import { CandlestickChart, TrendingUp, Loader2, Wifi, WifiOff, Settings, Zap } from "lucide-react";
+import { CandlestickChart, TrendingUp, Loader2, Wifi, WifiOff, Settings, Zap, BarChart3 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { Time } from "lightweight-charts";
 import { scanForSignals, detectSRLevels, type TradingSignal, type SRLevel } from "@/lib/patternDetection";
@@ -305,8 +305,15 @@ const Index = () => {
               {instrument === "NIFTY" ? "NSE" : "BSE"}
             </span>
             <button
-              onClick={() => navigate("/settings")}
+              onClick={() => navigate("/chart")}
               className="ml-auto p-2 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              title="Go to Chart"
+            >
+              <BarChart3 className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => navigate("/settings")}
+              className="p-2 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
               title="Settings"
             >
               <Settings className="w-5 h-5" />
