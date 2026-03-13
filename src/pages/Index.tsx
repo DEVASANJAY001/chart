@@ -197,12 +197,15 @@ const Index = () => {
   }, [interval]);
 
   const lastCandleBucketRef = useRef<number | null>(null);
+  const currentCandleRef = useRef<OHLCData | null>(null);
 
-  // Keep lastCandleBucket in sync with data
+  // Keep lastCandleBucket and currentCandle in sync with data
   useEffect(() => {
     if (data.length > 0) {
-      const lastTime = data[data.length - 1].time as unknown as number;
+      const lastCandle = data[data.length - 1];
+      const lastTime = lastCandle.time as unknown as number;
       lastCandleBucketRef.current = getCandleBucket(new Date(lastTime * 1000));
+      currentCandleRef.current = { ...lastCandle };
     }
   }, [data, getCandleBucket]);
 
@@ -248,18 +251,30 @@ const Index = () => {
         const lastBucket = lastCandleBucketRef.current;
 
         if (lastBucket !== null && currentBucket > lastBucket) {
-          // New candle period — append a new candle
-          const newCandle: OHLCData = {
-            time: currentBucket as unknown as Time,
-            open: ltp,
-            high: ltp,
-            low: ltp,
-            close: ltp,
-          };
+          // New candle period — finalize the previous candle and append a new one
+          setData(prev => {
+            const finalized = currentCandleRef.current || prev[prev.length - 1];
+            const newCandle: OHLCData = {
+              time: currentBucket as unknown as Time,
+              open: ltp,
+              high: ltp,
+              low: ltp,
+              close: ltp,
+            };
+            return [...prev.slice(0, -1), { ...finalized }, newCandle];
+          });
           lastCandleBucketRef.current = currentBucket;
-          setData(prev => [...prev, newCandle]);
         } else {
-          // Same candle period — just update the chart visually (no state update to avoid full rebuild)
+          // Same candle period — update the real-time tracking ref and the chart visually
+          if (currentCandleRef.current) {
+            const last = currentCandleRef.current;
+            currentCandleRef.current = {
+              ...last,
+              close: ltp,
+              high: Math.max(last.high, ltp),
+              low: Math.min(last.low, ltp),
+            };
+          }
           chartRef.current?.updateLastCandle(ltp);
         }
       }
